@@ -12,3 +12,8 @@ wheels/
 # ML
 /data/
 /models/
+training/*
+!training/*.ipynb
+
+# VSC
+.vscode
