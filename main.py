@@ -30,7 +30,7 @@ def main():
     corners = find_corners(clustered_points)
     squares = get_squares(corners, M_inv)
     square_dict = squares_to_dict(squares)
-    model = RFDETRMedium(pretrain_weights=str(project_dir / 'models' / 'rfdetr_medium' / 'checkpoint_best_total.pth'), num_classes=12)
+    model = RFDETRMedium(pretrain_weights=str(project_dir / 'models' / 'rfdetr_medium_v2' / 'checkpoint_best_total.pth'), num_classes=12)
     predictions = model.predict(img)
     predict_board(square_dict, predictions)
     fen = dict_to_fen(square_dict)
