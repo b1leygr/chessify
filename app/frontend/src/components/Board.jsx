@@ -1,7 +1,8 @@
 // Board.jsx
 import { Chessboard } from 'react-chessboard'
+import './Board.css'
 
-export default function Board({ boardPosition }) {
+const Board = ({ boardPosition }) => {
     const chessboardOptions = {
       position: boardPosition,
       showAnimations: false,
@@ -11,7 +12,7 @@ export default function Board({ boardPosition }) {
     if (boardPosition != '')
         {
         return(
-            <div style={{ width: '500px', margin: 'auto' }}>
+            <div class = "board">
                 <Chessboard options={chessboardOptions} />
                 <p>
                     Current FEN:<br/> 
@@ -21,3 +22,5 @@ export default function Board({ boardPosition }) {
         );
         }
 }
+
+export default Board;

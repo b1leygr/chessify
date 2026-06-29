@@ -13,7 +13,8 @@
   "dependencies": {
     "react": "^19.2.7",
     "react-chessboard": "^5.10.0",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-webcam": "^7.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

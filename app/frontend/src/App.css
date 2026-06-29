@@ -56,6 +56,13 @@
   }
 }
 
+.components {
+    display: flex;
+    gap: 100px;
+    padding-left: 80px;
+    align-items: center;
+}
+
 #center {
   display: flex;
   flex-direction: column;
