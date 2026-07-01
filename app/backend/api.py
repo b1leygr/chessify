@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 import random
 
 app = Flask(__name__)
@@ -9,8 +9,15 @@ positions = ['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
              '2rqk2r/1b1p1ppp/p1n1pn2/1p6/1b1NP3/2N1BP2/PPPQ2PP/2KR1B1R',
              '8/8/3k4/8/2K5/8/8/8',]
 
-@app.route('/api/play')
+@app.route('/api/play', methods=['POST'])
 def play():
+    data = request.get_json()
+    image = data.get('image')
+    message = data.get('message')
+    if image is not None:
+        print(message)
+    else:
+        print("No image")
     randomFEN = random.choice(positions)
     return {'FEN': randomFEN}
 

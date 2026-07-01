@@ -11,13 +11,23 @@ function App() {
   const [currentFEN, setCurrentFEN] = useState('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR')
   const [loading, setLoading] = useState('');
   const [error, setError] = useState('');
+  const [boardImage, setBoardImage] = useState(null);
 
-  const play = async () => {
+  const getBoardImage = (imageSrc, action) => {
+    setBoardImage(imageSrc);
+    play(imageSrc, action)
+  };
+
+  const play = async (imageSrc, action) => {
     setLoading(true);
     try {
-      const response = await fetch('api/play', 
+      const response = await fetch('/api/play', 
         {
-          method: 'GET',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ image: imageSrc, message: action }),
         }
       );
       if(!response.ok){
@@ -39,8 +49,14 @@ function App() {
     <>
       <div class="components">
       <Board boardPosition={currentFEN}/>
-      <Capture play={play}/>
+      <Capture play={play} getBoardImage={getBoardImage}/>
       </div>
+{/*       {boardImage && (
+        <div>
+          <h3>Captured Screenshot:</h3>
+          <img src={boardImage} alt="Screenshot preview"/>
+        </div>
+      )} */}
     </>
   )
 }

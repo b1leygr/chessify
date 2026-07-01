@@ -3,33 +3,31 @@ import Webcam from 'react-webcam'
 import React, { useRef, useCallback, useState } from 'react'
 import './Capture.css'
 
-const Capture = ({ play }) => {
+const Capture = ({ play, getBoardImage }) => {
     const videoConstraints = {
     width: 1920,
     height: 1080,
     facingMode: "user"
     };
     const webcamRef = React.useRef(null);
-    const [boardImage, setBoardImage] = useState(null);
+    const imageRef = React.useRef(getBoardImage);
     const capture = React.useCallback(
         (action) => {
             const imageSrc = webcamRef.current.getScreenshot();
-            if (imageSrc) {
+            if (imageSrc) {               
                 switch(action) {
                     case 'play':
-                        console.log("Success");            
-                        setBoardImage(imageSrc);                        
-                        play();
+                        getBoardImage(imageSrc, 'play');   
+                        console.log("Success");                              
                         break;
                     case 'calibrate':
-                        console.log("Success");
-                        setBoardImage(imageSrc);  
-                        // calibrate(); 
+                        getBoardImage(imageSrc, 'calibrate');                          
+                        console.log("Success"); 
                         break;
                 }
             }
         },
-        [webcamRef]
+        [webcamRef, getBoardImage]
     );
 
     return (
