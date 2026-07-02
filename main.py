@@ -23,7 +23,7 @@ def main():
     blur = preprocess(warped)
     canny = autocanny(blur)
     closed = close(canny)
-    lines = hough_lines(canny)
+    lines = hough_lines(closed)
     h, v = sort_lines(lines)
     intersections = find_intersections(h, v)
     clustered_points = cluster_intersections(intersections)

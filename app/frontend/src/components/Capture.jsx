@@ -3,7 +3,7 @@ import Webcam from 'react-webcam'
 import React, { useRef, useCallback, useState } from 'react'
 import './Capture.css'
 
-const Capture = ({ play, getBoardImage }) => {
+const Capture = ({ updateBoard, getBoardImage }) => {
     const videoConstraints = {
     width: 1920,
     height: 1080,
@@ -16,8 +16,8 @@ const Capture = ({ play, getBoardImage }) => {
             const imageSrc = webcamRef.current.getScreenshot();
             if (imageSrc) {               
                 switch(action) {
-                    case 'play':
-                        getBoardImage(imageSrc, 'play');   
+                    case 'move':
+                        getBoardImage(imageSrc, 'move');   
                         console.log("Success");                              
                         break;
                     case 'calibrate':
@@ -45,7 +45,7 @@ const Capture = ({ play, getBoardImage }) => {
             console.error("Camera access denied or unavailable:", error);}}
             />
             <div class = "interact">
-                <button class="buttons" onClick={() => capture('play')}>Play</button>
+                <button class="buttons" onClick={() => capture('move')}>Move</button>
                 <button class="buttons" onClick={() => capture('calibrate')}>Calibrate</button>
             </div>            
             </div>

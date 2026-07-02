@@ -5,23 +5,26 @@ import heroImg from './assets/hero.png'
 import './App.css'
 import Board from './components/Board'
 import Capture from './components/Capture'
+import testImages from './testimages.json';
 
 function App() {
   const [count, setCount] = useState(0)
-  const [currentFEN, setCurrentFEN] = useState('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR')
+  const [currentFEN, setCurrentFEN] = useState('8/8/8/8/8/8/8/8')
   const [loading, setLoading] = useState('');
   const [error, setError] = useState('');
   const [boardImage, setBoardImage] = useState(null);
+  console.log('testImages:', testImages);
+  const testimage = testImages[Object.keys(testImages)[0]].data;
 
   const getBoardImage = (imageSrc, action) => {
     setBoardImage(imageSrc);
-    play(imageSrc, action)
+    updateBoard(imageSrc, action)
   };
 
-  const play = async (imageSrc, action) => {
+  const updateBoard = async (imageSrc, action) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/play', 
+      const response = await fetch(`/api/${action}`, 
         {
           method: 'POST',
           headers: {
@@ -49,7 +52,7 @@ function App() {
     <>
       <div class="components">
       <Board boardPosition={currentFEN}/>
-      <Capture play={play} getBoardImage={getBoardImage}/>
+      <Capture updateBoard={updateBoard} getBoardImage={getBoardImage}/>
       </div>
 {/*       {boardImage && (
         <div>
