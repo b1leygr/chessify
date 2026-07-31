@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
@@ -6,6 +6,13 @@ import './App.css'
 import Board from './components/Board'
 import Capture from './components/Capture'
 import testImages from './testimages.json';
+import { io } from 'socket.io-client';
+
+const socket = io({
+  autoConnect: true,
+  transports: ["websocket"],
+  upgrade: false,
+})
 
 function App() {
   const [currentFEN, setCurrentFEN] = useState('8/8/8/8/8/8/8/8')
@@ -16,6 +23,46 @@ function App() {
   const [gameOver, setGameOver] = useState(false);
   console.log('testImages:', testImages);
   const testimage = testImages[Object.keys(testImages)[0]].data;
+  const [isConnected, setIsConnected] = useState(socket.connected)
+  const [statusMessage, setStatusMessage] = useState('Disconnected');
+  const [gameID, setGameID] = useState(null);
+  const [colour, setColour] = useState(null);
+  const [joinStarted, setJoinStarted] = useState(false);
+  
+  useEffect(() => {
+    socket.on('connect', () => {
+      setIsConnected(true);
+      setStatusMessage('Connected');
+    });
+
+    socket.on('disconnect', () => {
+      setIsConnected(false);
+      setStatusMessage('Disconnected');
+    });
+
+    socket.on('matchmaking_status', (data) => {
+      setStatusMessage(data.message);
+    });
+
+    socket.on('game_started', (data) => {
+      setGameID(data.game_id);
+      setColour(data.colour);
+      setStatusMessage('Match found! Joined room: ${data.game_id}');
+    });    
+
+    return () => {
+        socket.off('connect');
+        socket.off('disconnect');
+        socket.off('matchmaking_status');
+        socket.off('game_started');
+      };
+  }, [])
+
+  const handleJoinClick = () => {
+    setStatusMessage('Joining...');
+    socket.emit('join');
+    setJoinStarted(true);
+  };
 
   const getBoardImage = (imageSrc, action) => {
     setBoardImage(imageSrc);
@@ -120,6 +167,18 @@ function App() {
       <Board boardPosition={currentFEN}/>
       <Capture updateBoard={updateBoard} getBoardImage={getBoardImage} loading={loading} moveLegal={moveLegal} gameOver={gameOver} reset={handleReset} />
       </div>
+      <br/>
+      <div> Status: {statusMessage} </div>
+      {/* <div>WebSocket Status: {isConnected ? 'Connected' : 'Disconnected'}</div> */}
+      { !joinStarted && (
+        <button onClick={handleJoinClick} style={{ width: '200px', height: '50px', alignSelf: 'center' }}>
+          Join Game Room
+        </button>
+      )}
+      { gameID && (
+        <div>Game ID: {gameID} </div>
+      )}
+      {/* <button style={{ width: '200px', height: '50px'}}> Join room </button> */}
 {/*       {boardImage && (
         <div>
           <h3>Captured Screenshot:</h3>

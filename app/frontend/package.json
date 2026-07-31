@@ -8,13 +8,14 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "api": "cd ../backend && uv run flask run --no-debugger --reload"
+    "api": "cd ../backend && uv run api.py"
   },
   "dependencies": {
     "react": "^19.2.7",
     "react-chessboard": "^5.10.0",
     "react-dom": "^19.2.7",
-    "react-webcam": "^7.2.0"
+    "react-webcam": "^7.2.0",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
