@@ -58,9 +58,10 @@
 
 .components {
     display: flex;
+    flex-direction: row;
     gap: 100px;
-    padding-left: 80px;
     align-items: center;
+    margin: 0 auto;
 }
 
 #center {

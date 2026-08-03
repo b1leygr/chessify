@@ -3,18 +3,17 @@ monkey.patch_all()
 from flask import Flask, request, session
 from utils import *
 from pathlib import Path
-""" from rfdetr import RFDETRMedium
+from rfdetr import RFDETRMedium
 import base64
 import chess
-import chess.engine """
 from flask_socketio import SocketIO, emit, join_room, close_room
 
 app = Flask(__name__)
 app.secret_key = 'test_environment'
 socketio = SocketIO(app, cors_allowed_origins='*', logger=False, engineio_logger=False, async_mode='gevent')
 project_dir = Path.cwd()
-""" model = RFDETRMedium(pretrain_weights=str(project_dir / 'models' / 'rfdetr_medium_v2' / 'checkpoint_best_total.pth'), num_classes=12)    
-model.optimize_for_inference() """
+model = RFDETRMedium(pretrain_weights=str(project_dir / 'models' / 'rfdetr_medium_v2' / 'checkpoint_best_total.pth'), num_classes=12)    
+model.optimize_for_inference()
 
 games = {}
 waiting_players = []
@@ -52,21 +51,85 @@ def join():
 
 @app.route('/api/calibrate', methods=['POST'])
 def calibrate():
-    data = request.get_json
+    data = request.get_json()
     game_id = data.get('game_id')
+    game = games[game_id]
     colour = data.get('colour')
     image = data.get('image')
-    game = games[game_id]
-    game[f'{colour}']['squares'] = squares_to_dict()
+    image = image.split(',')[1]
+    image = base64.b64decode(image)
+    image = np.frombuffer(image, dtype=np.uint8)
+    image = cv2.imdecode(image, cv2.IMREAD_COLOR)
+    board_grid = get_grid(image)
+    
+    game[f'{colour}']['squares'] = squares_to_dict(board_grid)
 
+    """ if colour == 'black':
+        inv_key = str.maketrans('abcdefgh12345678', 'hgfedcba87654321')
+        game['black']['squares'] = {square_name.translate(inv_key): square_info for square_name, square_info in game['black']['squares'].items()} """
+
+    print(game[f'{colour}']['squares'])
+          
     socketio.emit('calibration_successful', 
-                  {'message': f'{colour.capitalize()} calibration successful'},
+                  {'message': f'{colour.capitalize()} calibration successful', 'FEN': game['position']},
                   to=game[colour]['id'])
 
     if game['white']['squares'] and game['black']['squares']:
+        board = chess.Board()
+        game['position'] = board.fen()
         socketio.emit('calibration_complete', 
-                      {'message': 'Game calibration complete'},
+                      {'message': 'Game calibration complete', 'FEN': game['position']},
                       room=game_id)
+        return {'message': 'Calibration complete for both players'}
+
+    return {'message': f'{colour.capitalize()} calibration successful, waiting for opponent'}
+
+@app.route('/api/move', methods=['POST'])
+def move():
+    data = request.get_json()
+    game_id = data.get('game_id')
+    game = games[game_id]
+    colour = data.get('colour')
+    image = data.get('image')
+    image = image.split(',')[1]
+    image = base64.b64decode(image)
+    image = np.frombuffer(image, dtype=np.uint8)
+    image = cv2.imdecode(image, cv2.IMREAD_COLOR)
+
+    for square in game[f'{colour}']['squares']:
+        game[f'{colour}']['squares'][square]['piece'], game[f'{colour}']['squares'][square]['score'] = None, None
+    predictions = model.predict(image)
+    predict_board(game[f'{colour}']['squares'], predictions)
+    fen = dict_to_fen(game[f'{colour}']['squares'])
+    """ if colour == 'black':
+        fen = '/'.join(fen.split('/')[::-1]) """
+    board = chess.Board(game['position'])
+    print(f'Board FEN: {board.board_fen()}')
+    print(f'Predicted FEN: {fen}')
+    for move in board.legal_moves:
+        board.push(move)
+        if board.board_fen() == fen:
+            game['position'] = board.fen()
+            break
+        board.pop()
+    else:
+        game['position'] = board.fen()
+        return {'FEN': board.fen(), 'outcome': 'None', 'message': 'Illegal move!'}
+    
+    if board.outcome() is not None:
+        outcome = board.outcome()
+        if outcome.winner is None:
+            socketio.emit('game_over', {'message': 'Game over! Draw', 'FEN': board.fen(), 'outcome': 'Draw'}, room=game_id)
+            return {'FEN': board.fen(), 'outcome': 'Draw', 'message': 'Game over!'}
+        elif outcome.winner == chess.WHITE:
+            socketio.emit('game_over', {'message': 'Game over! White wins', 'FEN': board.fen(), 'outcome': 'White win'}, room=game_id)
+            return {'FEN': board.fen(), 'outcome': 'White win', 'message': 'Game over!'}
+        else:
+            socketio.emit('game_over', {'message': 'Game over! Black wins', 'FEN': board.fen(), 'outcome': 'Black win'}, room=game_id)
+            return {'FEN': board.fen(), 'outcome': 'Black win', 'message': 'Game over!'}
+
+    socketio.emit('move_successful', {'message': 'Move successful!', 'FEN': board.fen()}, room=game_id)
+    return {'FEN': board.fen(), 'outcome': 'None', 'message': 'Move successful!'}
 
 @socketio.on('disconnect')
 def disconnect():
@@ -175,13 +238,41 @@ def get_computer_move():
             return {'FEN': board.board_fen(), 'outcome': 'White win', 'message': 'Game over!'}
         else:
             return {'FEN': board.board_fen(), 'outcome': 'Black win', 'message': 'Game over!'}
-    return {'FEN': board.board_fen(), 'outcome': 'None', 'message': 'Computer move fetched!'} """
+    return {'FEN': board.board_fen(), 'outcome': 'None', 'message': 'Computer move fetched!'}
 
 @app.route('/api/reset', methods=['POST'])
 def reset():
     session['square_dict'] = None
     session['position'] = None
-    return {'FEN': '8/8/8/8/8/8/8/8', 'message': 'Reset successful!'}
+    return {'FEN': '8/8/8/8/8/8/8/8', 'message': 'Reset successful!'} """
+
+@app.route('/api/reset', methods=['POST'])
+def reset():
+    data = request.get_json()
+    game_id = data.get('game_id')
+    if game_id in games:
+        games[game_id]['position'] = '8/8/8/8/8/8/8/8'
+        games[game_id]['white']['squares'] = None
+        games[game_id]['black']['squares'] = None
+    return {'FEN': '8/8/8/8/8/8/8/8', 'message': 'Reset successful!'} 
+
+def get_grid(image):
+    blur = preprocess(image)
+    canny = autocanny(blur)
+    dilated = dilate(canny)
+    points = find_contour(dilated)
+    corners = find_corners(points)
+    warped, M_inv = warp(image, corners)
+    blur = preprocess(warped)
+    canny = autocanny(blur)
+    closed = close(canny)
+    lines = hough_lines(closed)
+    h, v = sort_lines(lines)
+    intersections = find_intersections(h, v)
+    clustered_points = cluster_intersections(intersections)
+    corners = find_corners(clustered_points)
+    squares = get_squares(corners, M_inv)
+    return squares
 
 if __name__ == '__main__':
     host = '127.0.0.1'

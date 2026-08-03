@@ -2,12 +2,13 @@
 import { Chessboard } from 'react-chessboard'
 import './Board.css'
 
-const Board = ({ boardPosition }) => {
+const Board = ({ boardPosition, colour }) => {
     const chessboardOptions = {
       position: boardPosition,
       showAnimations: false,
       allowDragging: false,
       allowDragOffBoard: false,
+      boardOrientation: colour,
     };
     if (boardPosition != '')
         {
@@ -16,7 +17,7 @@ const Board = ({ boardPosition }) => {
                 <Chessboard options={chessboardOptions} />
                 <p>
                     Current FEN:<br/> 
-                    {boardPosition}
+                    {boardPosition.split(' ')[0]}
                 </p>
             </div>
         );

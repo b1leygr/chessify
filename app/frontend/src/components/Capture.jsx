@@ -3,7 +3,7 @@ import Webcam from 'react-webcam'
 import React, { useRef, useCallback, useState } from 'react'
 import './Capture.css'
 
-const Capture = ({ updateBoard, getBoardImage, loading, moveLegal, gameOver, reset }) => {
+const Capture = ({ updateBoard, getBoardImage, loading, moveLegal, gameOver, reset, isCalibrated, isMyTurn }) => {
     const videoConstraints = {
     width: 1920,
     height: 1080,
@@ -30,20 +30,18 @@ const Capture = ({ updateBoard, getBoardImage, loading, moveLegal, gameOver, res
         [webcamRef, getBoardImage]
     );
 
-    const [calibrateDisabled, setCalibrateDisabled] = useState(false);
     const handleClick = (button) => {
         if (button.id === 'move') {
             capture('move');
         }
         else if (button.id === 'calibrate') {
             capture('calibrate');
-            setCalibrateDisabled(true);
         }
     }
     
     const handleReset = () => {
         reset();
-        setCalibrateDisabled(false);
+        setIsCalibrated(false);
     }
 
     return (
@@ -61,17 +59,17 @@ const Capture = ({ updateBoard, getBoardImage, loading, moveLegal, gameOver, res
             console.error("Camera access denied or unavailable:", error);}}
             />
             <div class = "interact">
-                <button class="buttons" id="move" onClick={(e) => handleClick(e.target)} disabled={loading || gameOver}>
+                <button class="buttons" id="move" onClick={(e) => handleClick(e.target)} disabled={loading || gameOver || !isMyTurn}>
                     Move
                 </button>
-                <button class="buttons" id="calibrate" onClick={(e) => handleClick(e.target)} disabled={loading || gameOver || calibrateDisabled}>
+                <button class="buttons" id="calibrate" onClick={(e) => handleClick(e.target)} disabled={loading || gameOver || isCalibrated}>
                     Calibrate
                 </button>
             </div>
             <div>
-            <p style={{ visibility: moveLegal === false ? 'visible' : 'hidden' }}>
+            {/* <p style={{ visibility: moveLegal === false ? 'visible' : 'hidden' }}>
                 Illegal move made! Please try again.
-            </p>
+            </p> */}
             <button style={{ background: 'none', border: 'none', color: 'blue', textDecoration: 'underline', cursor: 'pointer', fontSize: '16px', width: 'fit-content' }} onClick={handleReset} disabled={loading}>
                 Reset Game
             </button>

@@ -25,9 +25,11 @@ function App() {
   const testimage = testImages[Object.keys(testImages)[0]].data;
   const [isConnected, setIsConnected] = useState(socket.connected)
   const [statusMessage, setStatusMessage] = useState('Disconnected');
+  const [joinStarted, setJoinStarted] = useState(false);
   const [gameID, setGameID] = useState(null);
   const [colour, setColour] = useState(null);
-  const [joinStarted, setJoinStarted] = useState(false);
+  const [isCalibrated, setIsCalibrated] = useState(false);
+  const [gameReady, setGameReady] = useState(false);
   
   useEffect(() => {
     socket.on('connect', () => {
@@ -47,14 +49,41 @@ function App() {
     socket.on('game_started', (data) => {
       setGameID(data.game_id);
       setColour(data.colour);
-      setStatusMessage('Match found! Joined room: ${data.game_id}');
-    });    
+      setStatusMessage('Match found!');
+    });
+    
+    socket.on('calibration_successful', (data) => {
+      setIsCalibrated(true);
+      setCurrentFEN(data.FEN);
+      setStatusMessage('Calibration successful!');
+    });
+    
+    socket.on('calibration_complete', (data) => {
+      setGameReady(true);
+      setCurrentFEN(data.FEN);
+      setStatusMessage('Calibration complete!');
+    });
+
+    socket.on('move_successful', (data) => {
+      setCurrentFEN(data.FEN);
+    });
+
+    socket.on('game_over', (data) => {
+      setCurrentFEN(data.FEN);
+      setStatusMessage(data.message);
+      setGameOver(true);
+      alert(data.message);
+    });
 
     return () => {
         socket.off('connect');
         socket.off('disconnect');
         socket.off('matchmaking_status');
         socket.off('game_started');
+        socket.off('calibration_successful');
+        socket.off('calibration_complete');
+        socket.off('move_successful');
+        socket.off('game_over');
       };
   }, [])
 
@@ -64,14 +93,19 @@ function App() {
     setJoinStarted(true);
   };
 
+  const isMyTurn = () => {
+    if (colour === 'white' && currentFEN.split(' ')[1] === 'w') {
+      return true;
+    }
+    else if (colour === 'black' && currentFEN.split(' ')[1] === 'b') {
+      return true;
+    }
+    return false;
+  };
+
   const getBoardImage = (imageSrc, action) => {
     setBoardImage(imageSrc);
-    updateBoard(imageSrc, action)
-    if (action === 'move') {
-      if (moveLegal === true && gameOver === false) {
-        getComputerMove();
-      }
-    }
+    updateBoard(imageSrc, action);
   };
 
   const updateBoard = async (imageSrc, action) => {
@@ -83,7 +117,7 @@ function App() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ image: imageSrc, message: action }),
+          body: JSON.stringify({ image: imageSrc, message: action, game_id: gameID, colour: colour }),
         }
       );
       if(!response.ok){
@@ -93,24 +127,14 @@ function App() {
       if (action === 'move') {
         if (data.message === 'Move successful!') {
           setMoveLegal(true);
-          setCurrentFEN(data.FEN);
+          setStatusMessage('Move successful!');
         }
         else if (data.message === 'Illegal move!') {
           setMoveLegal(false);
-        }
-        else if (data.message === 'Game over!') {
-          setCurrentFEN(data.FEN);
-          setGameOver(true);
-          if (data.outcome === 'White win') {
-            alert('Game over! White wins!');
-          }
-          else if (data.outcome === 'Black win') {
-            alert('Game over! Black wins!');
-          }
+          setStatusMessage('Illegal move! Please try again.');
         }
       }
       else if (action === 'calibrate') {
-        setCurrentFEN(data.FEN);
       }
     }
     catch(error) {
@@ -153,6 +177,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ game_id: gameID }),
       });
     } 
     catch (error) {
@@ -163,13 +188,14 @@ function App() {
 
   return (
     <>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
       <div class="components">
-      <Board boardPosition={currentFEN}/>
-      <Capture updateBoard={updateBoard} getBoardImage={getBoardImage} loading={loading} moveLegal={moveLegal} gameOver={gameOver} reset={handleReset} />
+      <Board boardPosition={currentFEN} colour={colour} />
+      <Capture updateBoard={updateBoard} getBoardImage={getBoardImage} loading={loading} moveLegal={moveLegal} gameOver={gameOver} reset={handleReset} isCalibrated={isCalibrated} isMyTurn={isMyTurn()} />
       </div>
-      <br/>
-      <div> Status: {statusMessage} </div>
+      <div> Status: {statusMessage}
       {/* <div>WebSocket Status: {isConnected ? 'Connected' : 'Disconnected'}</div> */}
+      <br/>
       { !joinStarted && (
         <button onClick={handleJoinClick} style={{ width: '200px', height: '50px', alignSelf: 'center' }}>
           Join Game Room
@@ -178,6 +204,9 @@ function App() {
       { gameID && (
         <div>Game ID: {gameID} </div>
       )}
+      </div>            
+      </div>
+      <br/>
       {/* <button style={{ width: '200px', height: '50px'}}> Join room </button> */}
 {/*       {boardImage && (
         <div>
