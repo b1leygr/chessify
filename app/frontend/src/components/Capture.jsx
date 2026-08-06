@@ -3,7 +3,7 @@ import Webcam from 'react-webcam'
 import React, { useRef, useCallback, useState } from 'react'
 import './Capture.css'
 
-const Capture = ({ updateBoard, getBoardImage, loading, moveLegal, gameOver, reset, isCalibrated, isMyTurn }) => {
+const Capture = ({ updateBoard, getBoardImage, loading, moveLegal, gameOver, reset, isCalibrated, isMyTurn, gameID }) => {
     const videoConstraints = {
     width: 1920,
     height: 1080,
@@ -62,14 +62,11 @@ const Capture = ({ updateBoard, getBoardImage, loading, moveLegal, gameOver, res
                 <button class="buttons" id="move" onClick={(e) => handleClick(e.target)} disabled={loading || gameOver || !isMyTurn}>
                     Move
                 </button>
-                <button class="buttons" id="calibrate" onClick={(e) => handleClick(e.target)} disabled={loading || gameOver || isCalibrated}>
+                <button class="buttons" id="calibrate" onClick={(e) => handleClick(e.target)} disabled={loading || gameOver || !gameID || isCalibrated}>
                     Calibrate
                 </button>
             </div>
             <div>
-            {/* <p style={{ visibility: moveLegal === false ? 'visible' : 'hidden' }}>
-                Illegal move made! Please try again.
-            </p> */}
             <button style={{ background: 'none', border: 'none', color: 'blue', textDecoration: 'underline', cursor: 'pointer', fontSize: '16px', width: 'fit-content' }} onClick={handleReset} disabled={loading}>
                 Reset Game
             </button>

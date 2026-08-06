@@ -17,19 +17,19 @@ const socket = io({
 function App() {
   const [currentFEN, setCurrentFEN] = useState('8/8/8/8/8/8/8/8')
   const [loading, setLoading] = useState('');
-  const [error, setError] = useState('');
   const [boardImage, setBoardImage] = useState(null);
-  const [moveLegal, setMoveLegal] = useState(null);
   const [gameOver, setGameOver] = useState(false);
   console.log('testImages:', testImages);
   const testimage = testImages[Object.keys(testImages)[0]].data;
   const [isConnected, setIsConnected] = useState(socket.connected)
   const [statusMessage, setStatusMessage] = useState('Disconnected');
   const [joinStarted, setJoinStarted] = useState(false);
+  const [computerGameStarted, setComputerGameStarted] = useState(false);
   const [gameID, setGameID] = useState(null);
   const [colour, setColour] = useState(null);
   const [isCalibrated, setIsCalibrated] = useState(false);
   const [gameReady, setGameReady] = useState(false);
+  const [gameMode, setGameMode] = useState(null);
   
   useEffect(() => {
     socket.on('connect', () => {
@@ -49,22 +49,22 @@ function App() {
     socket.on('game_started', (data) => {
       setGameID(data.game_id);
       setColour(data.colour);
-      setStatusMessage('Match found!');
+      setStatusMessage(data.message);
     });
     
-    socket.on('calibration_successful', (data) => {
-      setIsCalibrated(true);
+    socket.on('opponent_calibrated', (data) => {
       setCurrentFEN(data.FEN);
-      setStatusMessage('Calibration successful!');
+      setStatusMessage(data.message);
     });
     
     socket.on('calibration_complete', (data) => {
+      setIsCalibrated(true);
       setGameReady(true);
       setCurrentFEN(data.FEN);
-      setStatusMessage('Calibration complete!');
+      setStatusMessage(data.message);
     });
 
-    socket.on('move_successful', (data) => {
+    socket.on('move_complete', (data) => {
       setCurrentFEN(data.FEN);
     });
 
@@ -80,9 +80,9 @@ function App() {
         socket.off('disconnect');
         socket.off('matchmaking_status');
         socket.off('game_started');
-        socket.off('calibration_successful');
+        socket.off('opponent_calibrated');
         socket.off('calibration_complete');
-        socket.off('move_successful');
+        socket.off('move_complete');
         socket.off('game_over');
       };
   }, [])
@@ -91,6 +91,14 @@ function App() {
     setStatusMessage('Joining...');
     socket.emit('join');
     setJoinStarted(true);
+  };
+
+    const handleComputerGameClick = () => {
+    setStatusMessage('Computer game started');
+    setGameMode('computer');
+    setGameID('computer_game');
+    setColour('white');
+    setComputerGameStarted(true);
   };
 
   const isMyTurn = () => {
@@ -105,7 +113,7 @@ function App() {
 
   const getBoardImage = (imageSrc, action) => {
     setBoardImage(imageSrc);
-    updateBoard(imageSrc, action);
+    updateBoard(imageSrc, action); 
   };
 
   const updateBoard = async (imageSrc, action) => {
@@ -117,7 +125,12 @@ function App() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ image: imageSrc, message: action, game_id: gameID, colour: colour }),
+          body: JSON.stringify({
+            image: imageSrc,
+            game_mode: gameMode,
+            game_id: gameID,
+            colour: colour,
+          }),
         }
       );
       if(!response.ok){
@@ -126,20 +139,31 @@ function App() {
       const data = await response.json();
       if (action === 'move') {
         if (data.message === 'Move successful!') {
-          setMoveLegal(true);
-          setStatusMessage('Move successful!');
+          setStatusMessage(data.message);
+          if (gameMode === 'computer') {
+              setCurrentFEN(data.FEN);
+              getComputerMove();
+            }
         }
         else if (data.message === 'Illegal move!') {
-          setMoveLegal(false);
-          setStatusMessage('Illegal move! Please try again.');
+          setStatusMessage(`${data.message} Please try again.`);
+        }
+        else if (data.message === 'Game over!' && gameMode === 'computer') {
+          setStatusMessage(data.message);
+          setCurrentFEN(data.FEN);
+          setGameOver(true);
         }
       }
       else if (action === 'calibrate') {
+        if ((data.message).toUpperCase().includes(('calibration successful').toUpperCase())) {
+          setIsCalibrated(true);
+          setStatusMessage(data.message);
+          setCurrentFEN(data.FEN);
+        }
       }
     }
     catch(error) {
-      setError('Failed to fetch FEN from API');
-      console.error(error);
+      console.error('Failed to fetch FEN from API', error);
     }
     finally {
       setLoading(false);
@@ -156,10 +180,9 @@ function App() {
         },
       });
       const data = await response.json();
-      setTimeout(() => {setCurrentFEN(data.FEN)}, 1000);
+      setTimeout(() => {setCurrentFEN(data.FEN)}, 1500);
     } catch (error) {
-      setError('Failed to fetch computer move from API');
-      console.error(error);
+      console.error('Failed to fetch computer move from API', error);
     }
     finally {
       setLoading(false);
@@ -169,7 +192,6 @@ function App() {
   const handleReset = () => {
     setCurrentFEN('8/8/8/8/8/8/8/8');
     setBoardImage(null);
-    setMoveLegal(null);
     setGameOver(false);
     try {
       fetch('/api/reset', {
@@ -181,8 +203,7 @@ function App() {
       });
     } 
     catch (error) {
-      setError('Failed to reset game in API');
-      console.error(error);
+      console.error('Failed to reset game in API', error);
     }
   }
 
@@ -191,17 +212,22 @@ function App() {
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
       <div class="components">
       <Board boardPosition={currentFEN} colour={colour} />
-      <Capture updateBoard={updateBoard} getBoardImage={getBoardImage} loading={loading} moveLegal={moveLegal} gameOver={gameOver} reset={handleReset} isCalibrated={isCalibrated} isMyTurn={isMyTurn()} />
+      <Capture updateBoard={updateBoard} getBoardImage={getBoardImage} loading={loading} gameOver={gameOver} reset={handleReset} isCalibrated={isCalibrated} isMyTurn={isMyTurn()} gameID={gameID} />
       </div>
       <div> Status: {statusMessage}
-      {/* <div>WebSocket Status: {isConnected ? 'Connected' : 'Disconnected'}</div> */}
       <br/>
-      { !joinStarted && (
+      { !joinStarted && !computerGameStarted && (
         <button onClick={handleJoinClick} style={{ width: '200px', height: '50px', alignSelf: 'center' }}>
-          Join Game Room
+          Join Room
         </button>
       )}
-      { gameID && (
+      {" "}
+      { !joinStarted && !computerGameStarted && (
+        <button onClick={handleComputerGameClick} style={{ width: '200px', height: '50px', alignSelf: 'center' }}>
+          Play Computer
+        </button>
+      )}      
+      { gameID && gameID !== 'computer_game' && (
         <div>Game ID: {gameID} </div>
       )}
       </div>            

@@ -1,19 +1,35 @@
-from gevent import monkey
-monkey.patch_all()
-from flask import Flask, request, session
-from utils import *
+from flask import Flask, request
+from chess_utils import *
 from pathlib import Path
 from rfdetr import RFDETRMedium
 import base64
 import chess
+import chess.engine
 from flask_socketio import SocketIO, emit, join_room, close_room
 
 app = Flask(__name__)
 app.secret_key = 'test_environment'
 socketio = SocketIO(app, cors_allowed_origins='*', logger=False, engineio_logger=False, async_mode='gevent')
 project_dir = Path.cwd()
-model = RFDETRMedium(pretrain_weights=str(project_dir / 'models' / 'rfdetr_medium_v2' / 'checkpoint_best_total.pth'), num_classes=12)    
-model.optimize_for_inference()
+try:
+    import warnings
+    warnings.filterwarnings("ignore", message="Converting a tensor to a Python boolean")
+    print('Loading RFDETR model...')
+    model = RFDETRMedium(pretrain_weights=str(project_dir / 'models' / 'rfdetr_medium_v2' / 'checkpoint_best_total.pth'), num_classes=12)    
+    model.optimize_for_inference()
+    print('RFDETR model loaded successfully.')
+except Exception as e:
+    print(f"Error loading RFDETR model: {e}")
+    model = None
+try:
+    print('Loading Stockfish engine...')
+    stockfish_path = project_dir / 'stockfish' / 'win' / 'stockfish_18.exe'
+    engine = chess.engine.SimpleEngine.popen_uci(str(stockfish_path))
+    engine.configure({"Skill Level": 3})
+    print('Stockfish engine loaded successfully.')
+except Exception as e:
+    print(f"Error loading Stockfish engine: {e}")
+    engine = None
 
 games = {}
 waiting_players = []
@@ -45,95 +61,140 @@ def join():
             'white': {'id': opponent_sid, 'squares': None},
             'black': {'id': player_sid, 'squares': None},
         }
-        emit('game_started', {'game_id': game_id, 'colour': 'white'}, to=opponent_sid)
-        emit('game_started', {'game_id': game_id, 'colour': 'black'}, to=player_sid)
+        emit('game_started', {'game_id': game_id, 'colour': 'white', 'message': 'Match found! White'}, to=opponent_sid)
+        emit('game_started', {'game_id': game_id, 'colour': 'black', 'message': 'Match found! Black'}, to=player_sid)
         print(f'Room {game_id} created with users {opponent_sid} and {player_sid}')
 
 @app.route('/api/calibrate', methods=['POST'])
 def calibrate():
     data = request.get_json()
+    game_mode = data.get('game_mode')
     game_id = data.get('game_id')
+    if game_mode == 'computer':
+        games[game_id] = {
+            'position': '8/8/8/8/8/8/8/8',
+            'white': {'squares': None},
+        }
     game = games[game_id]
     colour = data.get('colour')
     image = data.get('image')
-    image = image.split(',')[1]
-    image = base64.b64decode(image)
-    image = np.frombuffer(image, dtype=np.uint8)
-    image = cv2.imdecode(image, cv2.IMREAD_COLOR)
-    board_grid = get_grid(image)
+
+    try:
+        if ',' in image:
+            image = image.split(',')[1]
+        image = base64.b64decode(image)
+        image = np.frombuffer(image, dtype=np.uint8)
+        image = cv2.imdecode(image, cv2.IMREAD_COLOR)
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return {'message': 'Error processing image'}
     
+    board_grid = localise_and_extract(image)
     game[f'{colour}']['squares'] = squares_to_dict(board_grid)
 
-    """ if colour == 'black':
-        inv_key = str.maketrans('abcdefgh12345678', 'hgfedcba87654321')
-        game['black']['squares'] = {square_name.translate(inv_key): square_info for square_name, square_info in game['black']['squares'].items()} """
-
-    print(game[f'{colour}']['squares'])
-          
-    socketio.emit('calibration_successful', 
-                  {'message': f'{colour.capitalize()} calibration successful', 'FEN': game['position']},
-                  to=game[colour]['id'])
+    if game_mode == 'computer':
+        board = chess.Board()
+        game['position'] = board.fen()
+        return {'message': 'Calibration successful!', 'FEN': game['position']}
 
     if game['white']['squares'] and game['black']['squares']:
         board = chess.Board()
         game['position'] = board.fen()
         socketio.emit('calibration_complete', 
-                      {'message': 'Game calibration complete', 'FEN': game['position']},
+                      {'message': 'Calibration complete!', 'FEN': game['position']},
                       room=game_id)
         return {'message': 'Calibration complete for both players'}
 
-    return {'message': f'{colour.capitalize()} calibration successful, waiting for opponent'}
+    socketio.emit('opponent_calibrated', 
+                  {'message': f'{colour.capitalize()} has calibrated their board',
+                   'FEN': '8/8/8/8/8/8/PPPPPPPP/RNBQKBNR' if colour == 'white' else 'rnbqkbnr/pppppppp/8/8/8/8/8/8'},
+                  to=game[f'{ "black" if colour == "white" else "white" }']['id'])
+
+    return {'message': f'{colour.capitalize()} calibration successful, waiting for opponent',
+            'FEN': '8/8/8/8/8/8/PPPPPPPP/RNBQKBNR' if colour == 'white' else 'rnbqkbnr/pppppppp/8/8/8/8/8/8'}
 
 @app.route('/api/move', methods=['POST'])
 def move():
     data = request.get_json()
+    game_mode = data.get('game_mode')
     game_id = data.get('game_id')
     game = games[game_id]
     colour = data.get('colour')
     image = data.get('image')
-    image = image.split(',')[1]
-    image = base64.b64decode(image)
-    image = np.frombuffer(image, dtype=np.uint8)
-    image = cv2.imdecode(image, cv2.IMREAD_COLOR)
+
+    try:
+        if ',' in image:
+            image = image.split(',')[1]
+        image = base64.b64decode(image)
+        image = np.frombuffer(image, dtype=np.uint8)
+        image = cv2.imdecode(image, cv2.IMREAD_COLOR)
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return {'message': 'Error processing image'}
 
     for square in game[f'{colour}']['squares']:
-        game[f'{colour}']['squares'][square]['piece'], game[f'{colour}']['squares'][square]['score'] = None, None
-    predictions = model.predict(image)
-    predict_board(game[f'{colour}']['squares'], predictions)
-    fen = dict_to_fen(game[f'{colour}']['squares'])
-    """ if colour == 'black':
-        fen = '/'.join(fen.split('/')[::-1]) """
+        game[f'{colour}']['squares'][square]['predictions'] = []
+    detections = model.predict(image)
+    predict_board(game[f'{colour}']['squares'], detections)
+    fens_to_try = get_fen_permutations(game[f'{colour}']['squares'])
     board = chess.Board(game['position'])
     print(f'Board FEN: {board.board_fen()}')
-    print(f'Predicted FEN: {fen}')
+    print(f'Predicted FENs: {fens_to_try}')
+
     for move in board.legal_moves:
         board.push(move)
-        if board.board_fen() == fen:
+        if board.board_fen() in fens_to_try:
             game['position'] = board.fen()
             break
         board.pop()
     else:
-        game['position'] = board.fen()
-        return {'FEN': board.fen(), 'outcome': 'None', 'message': 'Illegal move!'}
-    
-    if board.outcome() is not None:
-        outcome = board.outcome()
-        if outcome.winner is None:
-            socketio.emit('game_over', {'message': 'Game over! Draw', 'FEN': board.fen(), 'outcome': 'Draw'}, room=game_id)
-            return {'FEN': board.fen(), 'outcome': 'Draw', 'message': 'Game over!'}
-        elif outcome.winner == chess.WHITE:
-            socketio.emit('game_over', {'message': 'Game over! White wins', 'FEN': board.fen(), 'outcome': 'White win'}, room=game_id)
-            return {'FEN': board.fen(), 'outcome': 'White win', 'message': 'Game over!'}
-        else:
-            socketio.emit('game_over', {'message': 'Game over! Black wins', 'FEN': board.fen(), 'outcome': 'Black win'}, room=game_id)
-            return {'FEN': board.fen(), 'outcome': 'Black win', 'message': 'Game over!'}
+        return {'message': 'Illegal move!'}
 
-    socketio.emit('move_successful', {'message': 'Move successful!', 'FEN': board.fen()}, room=game_id)
-    return {'FEN': board.fen(), 'outcome': 'None', 'message': 'Move successful!'}
+    outcome = board.outcome()
+    if outcome is not None:
+        winner = 'Draw' if outcome.winner is None else ('White' if outcome.winner == chess.WHITE else 'Black')
+        message = f'Game over! {winner} wins' if outcome.winner is not None else 'Game over! Draw'
+        if game_mode == 'computer':
+            return {'message': message, 'FEN': game['position']}
+        socketio.emit('game_over', {'message': message, 'FEN': game['position']}, room=game_id)
+        return {'message': 'Game over!'}
+    else:
+        if game_mode == 'computer':
+            return {'message': 'Move successful!', 'FEN': game['position']}
+        socketio.emit('move_complete', {'FEN': game['position']}, room=game_id)
+
+    return {'message': 'Move successful!'}
+
+@app.route('/api/get_computer_move', methods=['POST'])
+def get_computer_move():
+    board = chess.Board(games['computer_game']['position'])
+    try:
+        print('Fetching computer move...')
+        result = engine.play(board, chess.engine.Limit(time=0.1))
+        print(f'Computer move: {result.move}')
+        board.push(result.move)
+        games['computer_game']['position'] = board.fen()
+        outcome = board.outcome()
+        if outcome is not None:
+            winner = 'Draw' if outcome.winner is None else ('White' if outcome.winner == chess.WHITE else 'Black')
+            message = f'Game over! {winner} wins' if outcome.winner is not None else 'Game over! Draw'
+        message = 'Computer move fetched!'
+        return {'message': message, 'FEN': games['computer_game']['position']}
+    except Exception as e:
+        print(f"Error getting computer move: {e}")
+        return {'message': 'Error getting computer move'}
 
 @socketio.on('disconnect')
 def disconnect():
     print(f'Client has disconnected: {request.sid}')
+    try:
+        if games['computer_game']:
+            games.pop('computer_game')
+            print('Computer game terminated due to disconnection')
+            return None
+    except KeyError:
+        pass
+
     player_sid = request.sid
     if player_sid in waiting_players:
         waiting_players.remove(player_sid)
@@ -157,95 +218,6 @@ def disconnect():
         games.pop(game_to_remove)
         print(f'Active game {game_to_remove} terminated due to disconnection')
 
-""" @app.route('/api/move', methods=['POST'])
-def move():
-    data = request.get_json()
-    image = data.get('image')
-    image = image.split(',')[1]
-    image = base64.b64decode(image)
-    image = np.frombuffer(image, dtype=np.uint8)
-    image = cv2.imdecode(image, cv2.IMREAD_COLOR)
-    for square in session['square_dict']:
-        session['square_dict'][square]['piece'], session['square_dict'][square]['score'] = None, None
-    predictions = model.predict(image)
-    predict_board(session['square_dict'], predictions)
-    fen = dict_to_fen(session['square_dict'])
-    board = chess.Board(session['position'])
-    for move in board.legal_moves:
-        board.push(move)
-        if board.board_fen() == fen:
-            session['position'] = board.fen()
-            break
-        board.pop()
-    else:
-        session['position'] = board.fen()
-        return {'FEN': board.board_fen(), 'outcome': 'None', 'message': 'Illegal move!'}
-    if board.outcome() is not None:
-        outcome = board.outcome()
-        if outcome.winner is None:
-            return {'FEN': board.board_fen(), 'outcome': 'Draw', 'message': 'Game over!'}
-        elif outcome.winner == chess.WHITE:
-            return {'FEN': board.board_fen(), 'outcome': 'White win', 'message': 'Game over!'}
-        else:
-            return {'FEN': board.board_fen(), 'outcome': 'Black win', 'message': 'Game over!'}  
-    return {'FEN': board.board_fen(), 'outcome': 'None', 'message': 'Move successful!'}
-
-@app.route('/api/calibrate', methods=['POST'])
-def calibrate():
-    data = request.get_json()
-    image = data.get('image')
-    image = image.split(',')[1]
-    image = base64.b64decode(image)
-    image = np.frombuffer(image, dtype=np.uint8)
-    image = cv2.imdecode(image, cv2.IMREAD_COLOR)
-    blur = preprocess(image)
-    canny = autocanny(blur)
-    dilated = dilate (canny)
-    points = find_contour(dilated)
-    corners = find_corners(points)
-    warped, M_inv = warp(image, corners)
-    blur = preprocess(warped)
-    canny = autocanny(blur)
-    closed = close(canny)
-    lines = hough_lines(closed)
-    h, v = sort_lines(lines)
-    intersections = find_intersections(h, v)
-    clustered_points = cluster_intersections(intersections)
-    corners = find_corners(clustered_points)
-    squares = get_squares(corners, M_inv)
-    session['square_dict'] = squares_to_dict(squares)
-    predictions = model.predict(image)
-    predict_board(session['square_dict'], predictions)
-    fen = dict_to_fen(session['square_dict'])
-    board = chess.Board()
-    board.set_board_fen(fen)
-    session['position'] = board.fen()
-    return {'FEN': fen, 'message': 'Calibration successful!'}
-
-@app.route('/api/get_computer_move', methods=['POST'])
-def get_computer_move():
-    board = chess.Board(session['position'])
-    with chess.engine.SimpleEngine.popen_uci(str(project_dir / 'stockfish' / 'win' / 'stockfish_18.exe')) as engine:
-        engine.configure({"Skill Level": 3})
-        result = engine.play(board, chess.engine.Limit(time=0.1))
-        board.push(result.move)
-    session['position'] = board.fen()
-    if board.outcome() is not None:
-        outcome = board.outcome()
-        if outcome.winner is None:
-            return {'FEN': board.board_fen(), 'outcome': 'Draw', 'message': 'Game over!'}
-        elif outcome.winner == chess.WHITE:
-            return {'FEN': board.board_fen(), 'outcome': 'White win', 'message': 'Game over!'}
-        else:
-            return {'FEN': board.board_fen(), 'outcome': 'Black win', 'message': 'Game over!'}
-    return {'FEN': board.board_fen(), 'outcome': 'None', 'message': 'Computer move fetched!'}
-
-@app.route('/api/reset', methods=['POST'])
-def reset():
-    session['square_dict'] = None
-    session['position'] = None
-    return {'FEN': '8/8/8/8/8/8/8/8', 'message': 'Reset successful!'} """
-
 @app.route('/api/reset', methods=['POST'])
 def reset():
     data = request.get_json()
@@ -254,27 +226,22 @@ def reset():
         games[game_id]['position'] = '8/8/8/8/8/8/8/8'
         games[game_id]['white']['squares'] = None
         games[game_id]['black']['squares'] = None
-    return {'FEN': '8/8/8/8/8/8/8/8', 'message': 'Reset successful!'} 
-
-def get_grid(image):
-    blur = preprocess(image)
-    canny = autocanny(blur)
-    dilated = dilate(canny)
-    points = find_contour(dilated)
-    corners = find_corners(points)
-    warped, M_inv = warp(image, corners)
-    blur = preprocess(warped)
-    canny = autocanny(blur)
-    closed = close(canny)
-    lines = hough_lines(closed)
-    h, v = sort_lines(lines)
-    intersections = find_intersections(h, v)
-    clustered_points = cluster_intersections(intersections)
-    corners = find_corners(clustered_points)
-    squares = get_squares(corners, M_inv)
-    return squares
+    return {'message': 'Reset successful!', 'FEN': '8/8/8/8/8/8/8/8'} 
 
 if __name__ == '__main__':
     host = '127.0.0.1'
     port = 5000
-    socketio.run(app,host=host, port=port, debug=True, log_output=True)
+    try:
+        socketio.run(app, host=host, port=port, debug=True, log_output=True, use_reloader=False)
+    except KeyboardInterrupt:
+        print("Shutting down server...")
+    finally:
+        if engine:
+            try:
+                engine.quit()
+                print("Server shut down successfully.")
+            except chess.engine.EngineTerminatedError:
+                print("Engine already terminated.")
+            except Exception as e:
+                print(f"Error shutting down engine: {e}")
+            
