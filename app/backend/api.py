@@ -30,6 +30,7 @@ try:
 except Exception as e:
     print(f"Error loading Stockfish engine: {e}")
     engine = None
+print('API is running...')
 
 games = {}
 waiting_players = []
@@ -143,6 +144,8 @@ def move():
 
     for move in board.legal_moves:
         board.push(move)
+        start_square = chess.square_name(move.from_square)
+        end_square = chess.square_name(move.to_square)        
         if board.board_fen() in fens_to_try:
             game['position'] = board.fen()
             break
@@ -153,15 +156,19 @@ def move():
     outcome = board.outcome()
     if outcome is not None:
         winner = 'Draw' if outcome.winner is None else ('White' if outcome.winner == chess.WHITE else 'Black')
+        if winner != 'Draw':
+            mated_king = chess.square_name(board.king(chess.BLACK if winner == 'White' else chess.WHITE))
+        else:
+            mated_king = None
         message = f'Game over! {winner} wins' if outcome.winner is not None else 'Game over! Draw'
         if game_mode == 'computer':
-            return {'message': message, 'FEN': game['position']}
-        socketio.emit('game_over', {'message': message, 'FEN': game['position']}, room=game_id)
+            return {'message': message, 'FEN': game['position'], 'start_square': start_square, 'end_square': end_square, 'mated_king': mated_king}
+        socketio.emit('game_over', {'message': message, 'FEN': game['position'], 'start_square': start_square, 'end_square': end_square, 'mated_king': mated_king}, room=game_id)
         return {'message': 'Game over!'}
     else:
         if game_mode == 'computer':
-            return {'message': 'Move successful!', 'FEN': game['position']}
-        socketio.emit('move_complete', {'FEN': game['position']}, room=game_id)
+            return {'message': 'Move successful!', 'FEN': game['position'], 'start_square': start_square, 'end_square': end_square}
+        socketio.emit('move_complete', {'FEN': game['position'], 'start_square': start_square, 'end_square': end_square}, room=game_id)
 
     return {'message': 'Move successful!'}
 
@@ -173,13 +180,18 @@ def get_computer_move():
         result = engine.play(board, chess.engine.Limit(time=0.1))
         print(f'Computer move: {result.move}')
         board.push(result.move)
+        start_square = chess.square_name(result.move.from_square)
+        end_square = chess.square_name(result.move.to_square)
         games['computer_game']['position'] = board.fen()
         outcome = board.outcome()
+        mated_king = None
         if outcome is not None:
             winner = 'Draw' if outcome.winner is None else ('White' if outcome.winner == chess.WHITE else 'Black')
+            if winner != 'Draw':
+                mated_king = chess.square_name(board.king(chess.BLACK if winner == 'White' else chess.WHITE))
             message = f'Game over! {winner} wins' if outcome.winner is not None else 'Game over! Draw'
         message = 'Computer move fetched!'
-        return {'message': message, 'FEN': games['computer_game']['position']}
+        return {'message': message, 'FEN': games['computer_game']['position'], 'start_square': start_square, 'end_square': end_square, 'mated_king': mated_king, 'computer_move': str(result.move)}
     except Exception as e:
         print(f"Error getting computer move: {e}")
         return {'message': 'Error getting computer move'}

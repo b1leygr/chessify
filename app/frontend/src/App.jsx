@@ -30,6 +30,8 @@ function App() {
   const [isCalibrated, setIsCalibrated] = useState(false);
   const [gameReady, setGameReady] = useState(false);
   const [gameMode, setGameMode] = useState(null);
+  const [moveHistory, setMoveHistory] = useState([{'startSquare': '', 'endSquare': ''}]);
+  const [matedKing, setMatedKing] = useState(null);
   
   useEffect(() => {
     socket.on('connect', () => {
@@ -49,6 +51,7 @@ function App() {
     socket.on('game_started', (data) => {
       setGameID(data.game_id);
       setColour(data.colour);
+      setGameMode('multiplayer');
       setStatusMessage(data.message);
     });
     
@@ -66,11 +69,18 @@ function App() {
 
     socket.on('move_complete', (data) => {
       setCurrentFEN(data.FEN);
+      setMoveHistory(prevHistory => [...prevHistory, 
+        {'startSquare': data.start_square,
+          'endSquare': data.end_square}]);
     });
 
     socket.on('game_over', (data) => {
       setCurrentFEN(data.FEN);
       setStatusMessage(data.message);
+      setMoveHistory(prevHistory => [...prevHistory, 
+        {'startSquare': data.start_square,
+          'endSquare': data.end_square}]);
+      setMatedKing(data.mated_king);
       setGameOver(true);
       alert(data.message);
     });
@@ -142,6 +152,9 @@ function App() {
           setStatusMessage(data.message);
           if (gameMode === 'computer') {
               setCurrentFEN(data.FEN);
+              setMoveHistory(prevHistory => [...prevHistory, 
+                {'startSquare': data.start_square,
+                  'endSquare': data.end_square}]);
               getComputerMove();
             }
         }
@@ -151,6 +164,10 @@ function App() {
         else if (data.message === 'Game over!' && gameMode === 'computer') {
           setStatusMessage(data.message);
           setCurrentFEN(data.FEN);
+          setMoveHistory(prevHistory => [...prevHistory, 
+            {'startSquare': data.start_square,
+              'endSquare': data.end_square}]);
+          setMatedKing(data.mated_king);
           setGameOver(true);
         }
       }
@@ -180,7 +197,12 @@ function App() {
         },
       });
       const data = await response.json();
-      setTimeout(() => {setCurrentFEN(data.FEN)}, 1500);
+      setTimeout(() => {setCurrentFEN(data.FEN),
+        setStatusMessage(data.message + ` ${data.computer_move}`)}, 
+        setMoveHistory(prevHistory => [...prevHistory, 
+          {'startSquare': data.start_square,
+            'endSquare': data.end_square}]),
+         1500);
     } catch (error) {
       console.error('Failed to fetch computer move from API', error);
     }
@@ -211,7 +233,7 @@ function App() {
     <>
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
       <div class="components">
-      <Board boardPosition={currentFEN} colour={colour} />
+      <Board boardPosition={currentFEN} colour={colour} moveHistory={moveHistory} matedKing={matedKing} />
       <Capture updateBoard={updateBoard} getBoardImage={getBoardImage} loading={loading} gameOver={gameOver} reset={handleReset} isCalibrated={isCalibrated} isMyTurn={isMyTurn()} gameID={gameID} />
       </div>
       <div> Status: {statusMessage}
