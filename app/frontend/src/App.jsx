@@ -242,13 +242,17 @@ function App() {
       <div> Status: {statusMessage}
       <br/>
       { !joinStarted && !computerGameStarted && (
-        <button onClick={handlePvPClick} style={{ width: '200px', height: '50px', alignSelf: 'center' }}>
+        <button onClick={handlePvPClick}
+        style={{ width: '200px', height: '50px', alignSelf: 'center' }}
+        disabled={!isConnected}>
           Play vs Player
         </button>
       )}
       {' '}
       { !joinStarted && !computerGameStarted && (
-        <button onClick={handlePvCClick} style={{ width: '200px', height: '50px', alignSelf: 'center' }}>
+        <button onClick={handlePvCClick}
+        style={{ width: '200px', height: '50px', alignSelf: 'center' }}
+        disabled={!isConnected}>
           Play Computer
         </button>
       )}      
