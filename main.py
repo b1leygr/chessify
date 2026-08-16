@@ -26,7 +26,7 @@ def main():
             if not file:
                 print('File not found.')
                 continue
-            move_id = file.stem.split('_')[2]
+            move_id = file.stem.split('_')[-1]
             print(f'Processing image: {file}')
             try:
                 true_fens = file.parent / 'fens.csv'
@@ -66,7 +66,7 @@ def main():
                                 'correct_predictions': 0}
                 for file in dir_path.glob('*.jpg'):
                     fen_accuracy['total_images'] += 1
-                    move_id = file.stem.split('_')[2]
+                    move_id = file.stem.split('_')[-1]
                     img = cv2.imread(file)
                     board_grid = chess_utils.localise_and_extract(img)
                     square_dict = chess_utils.squares_to_dict(board_grid)
