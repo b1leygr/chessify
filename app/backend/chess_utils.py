@@ -2,22 +2,26 @@
 A module for processing chessboard images and deriving board states.
 """
 
-import cv2
-from matplotlib import pyplot as plt
-import numpy as np
-import scipy.spatial as spatial
-import scipy.cluster as clstr
 from collections import defaultdict
-import operator
 import itertools
+import operator
+
+import cv2
+import numpy as np
+import scipy.cluster as clstr
+import scipy.spatial as spatial
+
 
 def preprocess(img):
+    """Preprocess an image for downstream processing."""
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     grey = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     blur = cv2.blur(grey, (3, 3))
     return blur
 
+
 def autocanny(blur):
+    """Apply automatic Canny edge detection."""
     v = np.median(blur)
     sigma = 0.33
     l = int(max(0, (1.0 - sigma) * v))
@@ -25,47 +29,68 @@ def autocanny(blur):
     canny = cv2.Canny(blur, l, u)
     return canny
 
+
 def dilate(canny):
+    """Dilate the edges in the image."""
     kernel = np.ones((3, 3), np.uint8)
     dilated = cv2.dilate(canny, kernel, iterations = 1)
     return dilated
 
+
 def find_contour(dilated):
+    """Find the largest contour in the dilated image."""
     contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     largest_contour = max(contours, key=cv2.contourArea)
     points = largest_contour.reshape(-1, 2)
     return points
 
+
 def find_corners(points):
-    #max x + y
+    """Find the corners of a quadrilateral."""
+    #Max x + y
     bottom_right, _ = max(enumerate([point[0] + point[1] for point in points]), key=operator.itemgetter(1))
-    #min x + y
+    #Min x + y
     top_left, _ = min(enumerate([point[0] + point[1] for point in points]), key=operator.itemgetter(1))
-    #min x - y
+    #Min x - y
     bottom_left, _ = min(enumerate([point[0] - point[1] for point in points]), key=operator.itemgetter(1))
-    #max x - y
+    #Max x - y
     top_right, _ = max(enumerate([point[0] - point[1] for point in points]), key=operator.itemgetter(1))
-    corners = np.asarray([points[top_left], points[top_right], points[bottom_left], points[bottom_right]], dtype='float32')
+    corners = np.asarray([points[top_left],
+                          points[top_right],
+                          points[bottom_left],
+                          points[bottom_right]],
+                          dtype='float32')
     return corners
 
+
 def warp(img, corners):
+    """Warp the image to a top-down view of the chessboard."""
     height, width = 800, 800
     dimensions = np.float32([[0, 0],[width, 0], [0, height],[width, height]])
+    # Compute the perspective transformation matrix
     M = cv2.getPerspectiveTransform(corners, dimensions)
+    # Retrieve the inverse transformation matrix for later use
     M_inv = cv2.invert(M)[1]
+    # Warp the image using the perspective transformation matrix
     warped = cv2.warpPerspective(img, M, (width, height))
     return warped, M_inv
 
+
 def close(canny):
+    """Apply morphological closing to the Canny edges."""
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     closed = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, kernel)
     return closed
 
+
 def hough_lines(closed):
+    """Detect lines in the closed image using a Hough transform."""
     lines = cv2.HoughLines(closed, 1, np.pi/180, 180)
     return lines
 
+
 def sort_lines(lines):
+    """Sort lines into horizontal and vertical based on their angles."""
     lines = np.reshape(lines, (-1, 2))
     h = []
     v = []
@@ -76,7 +101,9 @@ def sort_lines(lines):
             h.append([rho, theta])
     return h, v
 
+
 def find_intersections(h, v):
+    """Find intersections between horizontal and vertical lines."""
     intersections = []
     for rho_h, theta_h in h:
         for rho_v, theta_v in v:
@@ -86,7 +113,9 @@ def find_intersections(h, v):
             intersections.append(intersection)
     return intersections
 
+
 def cluster_intersections(intersections, max_dist=55):
+    """Cluster intersection points to derive unique grid points."""
     Y = spatial.distance.pdist(intersections)
     Z = clstr.hierarchy.single(Y)
     T = clstr.hierarchy.fcluster(Z, max_dist, "distance")
@@ -94,22 +123,22 @@ def cluster_intersections(intersections, max_dist=55):
     for i in range(len(T)):
         clusters[T[i]].append(intersections[i])
     clusters = clusters.values()
-    clusters = map(lambda arr: (np.mean(np.array(arr)[:, 0]), np.mean(np.array(arr)[:, 1])), clusters)
-    clustered_points = []
-    for point in clusters:
-        clustered_points.append([point[0], point[1]])
+    clustered_points = np.array([np.mean(cluster, axis=0) for cluster in clusters]).tolist()
     return clustered_points
 
+
 def get_squares(corners, M_inv):
+    """Derive the 64 squares of the chessboard from the grid corners."""
+    # Initialise grid dimensions based on corners
     h, w = np.max(corners, axis=0)
     x_start, y_start = np.min(corners, axis=0)
     rows = 8
     cols = 8
 
-    # Create linearly spaced points for the grid edges
+    # Create linearly spaced points along the x and y axes to define the grid
     x_points = np.linspace(x_start, w, cols + 1, dtype=int)
     y_points = np.linspace(y_start, h, rows + 1, dtype=int)
-    # Create meshgrid to get the X,Y coordinates of all intersections
+    # Create a meshgrid describing an evenly spaced 8*8 grid across the chessboard
     xv, yv = np.meshgrid(x_points, y_points)
 
     # Derive the four corners of each grid square
@@ -122,11 +151,14 @@ def get_squares(corners, M_inv):
             bottom_right = (xv[i + 1, j + 1], yv[i + 1, j]) 
             corners = [top_left, top_right, bottom_left, bottom_right]
             squares.append(corners)
-
     squares = np.array(squares, dtype=np.float32).reshape(-1, 1, 2)
+    
+    # Apply the inverse perspective transformation to map the squares
+    # back to the original image coordinates
     squares = cv2.perspectiveTransform(squares, M_inv)
     squares = squares.reshape(-1, 4, 2)
     return squares
+
 
 def localise_and_extract(img):
     """Localise a chessboard in an image and extract the grid squares."""
@@ -144,6 +176,7 @@ def localise_and_extract(img):
     grid_corners = find_corners(clustered_points)
     squares = get_squares(grid_corners, M_inv)
     return squares
+
 
 def squares_to_dict(squares, perspective='white_left'):
     """
@@ -163,8 +196,8 @@ def squares_to_dict(squares, perspective='white_left'):
         and 'corners' (square coordinates).
     """
     square_dict = {}
-    files = "abcdefgh"
-    ranks = "12345678"
+    files = 'abcdefgh'
+    ranks = '12345678'
     if perspective == 'white':
         # Top-to-bottom: 8 to 1, Left-to-right: a to h
         square_names = [f'{file}{rank}' for rank in ranks[::-1] for file in files]
@@ -185,6 +218,7 @@ def squares_to_dict(squares, perspective='white_left'):
 
     return square_dict
 
+
 def predict_board(square_dict, detections):
     """
     Map detections to corresponding squares based on detection and square coordinates.
@@ -195,7 +229,10 @@ def predict_board(square_dict, detections):
     Returns:
         Updates the square_dict in place with predictions for each square.
     """
-    label_list = ["B", "K", "N", "P", "Q", "R", "b", "k", "n", "p", "q", "r"]
+    label_list = ['B', 'K', 'N', 'P', 'Q', 'R', 'b', 'k', 'n', 'p', 'q', 'r']
+    # Iterate through each square and check if any detection falls within its boundaries
+    # If a detection's bottom centre point is within the square's corners, 
+    # add it to the predictions.
     for _, square_info in square_dict.items():
         x0, y0, x1, y1 = square_info['corners']
         predictions = []
@@ -210,6 +247,7 @@ def predict_board(square_dict, detections):
         predictions = [label for label, _ in predictions]
         square_info['predictions'] = predictions
 
+
 def get_fen_permutations(square_dict):
     """
     Generate FEN permutations based on square predictions.
@@ -222,15 +260,15 @@ def get_fen_permutations(square_dict):
 
     def board_to_fen(board):
         """Build a FEN string from a nested list representation of the chessboard."""
-        # store FEN ranks in list to build FEN
+        # Store FEN ranks in list to build FEN
         fen_ranks = []
         # FEN begins at rank 8, file a and goes down to rank 1, file h i.e. a8, b8... h1
-        # iterate through ranks, counting empty files and noting pieces to build rank strings
+        # Iterate through ranks, counting empty files and noting pieces to build rank strings
         for rank in board:
             rank_string = ''
             empty_count = 0
             for square in rank:
-                if square == "":
+                if square == '':
                     empty_count += 1
                 else:
                     if empty_count > 0:
@@ -240,35 +278,43 @@ def get_fen_permutations(square_dict):
             if empty_count > 0:
                 rank_string += str(empty_count)
             fen_ranks.append(rank_string)
-            
+        # Join the ranks with '/' to form the complete FEN string    
         return '/'.join(fen_ranks)
-    
-    board = [["" for _ in range(8)] for _ in range(8)]
+
+    # Initialise an empty 8x8 board
+    board = [['' for _ in range(8)] for _ in range(8)]
+    # Map files and ranks to their respective indices for board placement
     file_to_index = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
     rank_to_index = {'1': 7, '2': 6, '3': 5, '4': 4, '5': 3, '6': 2, '7': 1, '8': 0}
     squares_with_alts = []
 
     for square in square_dict:
+        # Initialise a prediction or list of predictions for each board square, 
+        # and track squares with multiple predictions
         file = file_to_index[square[0]]
         rank = rank_to_index[square[1]]
         predictions = square_dict[square]['predictions']
-        #print(f"Square: {square}, Predictions: {predictions}")
         if len(predictions) > 1:
             squares_with_alts.append((rank, file, predictions))
         else:
-            board[rank][file] = predictions[0] if predictions else ""
+            board[rank][file] = predictions[0] if predictions else ''
 
     fen_permutations = []
 
     alts = [square[2] for square in squares_with_alts]
+    # Generate all combinations of predictions for squares with multiple predictions
+    # and build temporary boards to derive the corresponding FEN for each combination
     for combination in itertools.product(*alts):
         temp_board = [row[:] for row in board]
         for (rank, file, _), alt in zip(squares_with_alts, combination):
             temp_board[rank][file] = alt
         fen_permutations.append(board_to_fen(temp_board))
 
-    for fen in fen_permutations:
-        if fen.count('K') > 1 or fen.count('k') > 1 or fen.count('P') > 8 or fen.count('p') > 8:
-            fen_permutations.remove(fen)
+    # Filter out invalid FENs based on chess rules (e.g., more than one king or too many pawns)
+    fen_permutations = [
+        fen for fen in fen_permutations 
+        if fen.count('P') <= 8 and fen.count('p') <= 8
+        and fen.count('K') == 1 and fen.count('k') == 1
+        ]
 
     return fen_permutations

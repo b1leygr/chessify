@@ -7,7 +7,7 @@ const Capture = ({ updateBoard, getBoardImage, loading, moveLegal, gameOver, res
     const videoConstraints = {
     width: 1920,
     height: 1080,
-    facingMode: "user"
+    facingMode: 'user'
     };
     const webcamRef = React.useRef(null);
     const imageRef = React.useRef(getBoardImage);
@@ -18,11 +18,11 @@ const Capture = ({ updateBoard, getBoardImage, loading, moveLegal, gameOver, res
                 switch(action) {
                     case 'move':
                         getBoardImage(imageSrc, 'move');   
-                        console.log("Success");                              
+                        console.log('Success');                              
                         break;
                     case 'calibrate':
                         getBoardImage(imageSrc, 'calibrate');                          
-                        console.log("Success"); 
+                        console.log('Success'); 
                         break;
                 }
             }
@@ -46,23 +46,23 @@ const Capture = ({ updateBoard, getBoardImage, loading, moveLegal, gameOver, res
 
     return (
         <>
-            <div class="webcam">
+            <div className='webcam'>
             <Webcam 
             ref={webcamRef}
-            screenshotFormat="image/jpeg"
+            screenshotFormat='image/jpeg'
             videoConstraints={videoConstraints}
             width={768}
             height={432}
             forceScreenshotSourceSize={true}
             audio={false}
             onUserMediaError={(error) => {
-            console.error("Camera access denied or unavailable:", error);}}
+            console.error('Camera access denied or unavailable:', error);}}
             />
-            <div class = "interact">
-                <button class="buttons" id="move" onClick={(e) => handleClick(e.target)} disabled={loading || gameOver || !isMyTurn}>
+            <div className = 'interact'>
+                <button className='buttons' id='move' onClick={(e) => handleClick(e.target)} disabled={loading || gameOver || !isMyTurn}>
                     Move
                 </button>
-                <button class="buttons" id="calibrate" onClick={(e) => handleClick(e.target)} disabled={loading || gameOver || !gameID || isCalibrated}>
+                <button className='buttons' id='calibrate' onClick={(e) => handleClick(e.target)} disabled={loading || gameOver || !gameID || isCalibrated}>
                     Calibrate
                 </button>
             </div>

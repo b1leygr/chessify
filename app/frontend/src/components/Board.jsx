@@ -26,7 +26,7 @@ const Board = ({ boardPosition, colour, moveHistory, matedKing }) => {
     if (boardPosition != '')
         {
         return(
-            <div class = "board">
+            <div className='board'>
                 <Chessboard options={chessboardOptions} />
                 <p>
                     Current FEN:<br/> 

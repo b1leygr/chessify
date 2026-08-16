@@ -1,16 +1,12 @@
 import { useState, useEffect } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
 import './App.css'
 import Board from './components/Board'
 import Capture from './components/Capture'
-import testImages from './testimages.json';
 import { io } from 'socket.io-client';
 
 const socket = io({
   autoConnect: true,
-  transports: ["websocket"],
+  transports: ['websocket'],
   upgrade: false,
 })
 
@@ -19,8 +15,6 @@ function App() {
   const [loading, setLoading] = useState('');
   const [boardImage, setBoardImage] = useState(null);
   const [gameOver, setGameOver] = useState(false);
-  console.log('testImages:', testImages);
-  const testimage = testImages[Object.keys(testImages)[0]].data;
   const [isConnected, setIsConnected] = useState(socket.connected)
   const [statusMessage, setStatusMessage] = useState('Disconnected');
   const [joinStarted, setJoinStarted] = useState(false);
@@ -28,7 +22,6 @@ function App() {
   const [gameID, setGameID] = useState(null);
   const [colour, setColour] = useState(null);
   const [isCalibrated, setIsCalibrated] = useState(false);
-  const [gameReady, setGameReady] = useState(false);
   const [gameMode, setGameMode] = useState(null);
   const [moveHistory, setMoveHistory] = useState([{'startSquare': '', 'endSquare': ''}]);
   const [matedKing, setMatedKing] = useState(null);
@@ -62,7 +55,6 @@ function App() {
     
     socket.on('calibration_complete', (data) => {
       setIsCalibrated(true);
-      setGameReady(true);
       setCurrentFEN(data.FEN);
       setStatusMessage(data.message);
     });
@@ -97,13 +89,13 @@ function App() {
       };
   }, [])
 
-  const handleJoinClick = () => {
+  const handlePvPClick = () => {
     setStatusMessage('Joining...');
     socket.emit('join');
     setJoinStarted(true);
   };
 
-    const handleComputerGameClick = () => {
+    const handlePvCClick = () => {
     setStatusMessage('Computer game started');
     setGameMode('computer');
     setGameID('computer_game');
@@ -215,6 +207,15 @@ function App() {
     setCurrentFEN('8/8/8/8/8/8/8/8');
     setBoardImage(null);
     setGameOver(false);
+    setJoinStarted(false);
+    setComputerGameStarted(false);
+    setGameID(null);
+    setColour(null);
+    setIsCalibrated(false);
+    setGameMode(null);    
+    setMoveHistory([{'startSquare': '', 'endSquare': ''}]);
+    setMatedKing(null);
+    setStatusMessage('Game reset');
     try {
       fetch('/api/reset', {
         method: 'POST',
@@ -232,20 +233,22 @@ function App() {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
-      <div class="components">
+      <div className='components'>
       <Board boardPosition={currentFEN} colour={colour} moveHistory={moveHistory} matedKing={matedKing} />
-      <Capture updateBoard={updateBoard} getBoardImage={getBoardImage} loading={loading} gameOver={gameOver} reset={handleReset} isCalibrated={isCalibrated} isMyTurn={isMyTurn()} gameID={gameID} />
+      <Capture updateBoard={updateBoard} getBoardImage={getBoardImage} 
+      loading={loading} gameOver={gameOver} reset={handleReset} 
+      isCalibrated={isCalibrated} isMyTurn={isMyTurn()} gameID={gameID} />
       </div>
       <div> Status: {statusMessage}
       <br/>
       { !joinStarted && !computerGameStarted && (
-        <button onClick={handleJoinClick} style={{ width: '200px', height: '50px', alignSelf: 'center' }}>
-          Join Room
+        <button onClick={handlePvPClick} style={{ width: '200px', height: '50px', alignSelf: 'center' }}>
+          Play vs Player
         </button>
       )}
-      {" "}
+      {' '}
       { !joinStarted && !computerGameStarted && (
-        <button onClick={handleComputerGameClick} style={{ width: '200px', height: '50px', alignSelf: 'center' }}>
+        <button onClick={handlePvCClick} style={{ width: '200px', height: '50px', alignSelf: 'center' }}>
           Play Computer
         </button>
       )}      
@@ -254,14 +257,6 @@ function App() {
       )}
       </div>            
       </div>
-      <br/>
-      {/* <button style={{ width: '200px', height: '50px'}}> Join room </button> */}
-{/*       {boardImage && (
-        <div>
-          <h3>Captured Screenshot:</h3>
-          <img src={boardImage} alt="Screenshot preview"/>
-        </div>
-      )} */}
     </>
   )
 }
