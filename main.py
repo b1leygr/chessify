@@ -10,6 +10,8 @@ def main():
     model = RFDETRMedium(
         pretrain_weights=str(
             project_dir
+            / 'app'
+            / 'backend'
             / 'models'
             / 'rfdetr_medium_v2'
             / 'checkpoint_best_total.pth'
