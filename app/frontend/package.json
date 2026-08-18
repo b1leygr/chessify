@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "api": "cd ../backend && uv run api.py || ../../.venv/Scripts/python api.py || ../../.venv/bin/python api.py",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "api": "cd ../backend && uv run api.py"
+    "preview": "vite preview"
   },
   "dependencies": {
     "react": "^19.2.7",
